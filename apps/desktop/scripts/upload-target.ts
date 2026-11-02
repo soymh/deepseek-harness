@@ -12,7 +12,7 @@ import { desktopReleaseTag, tagDesktopRelease } from './desktop-release-tag.ts'
 import { uploadDesktopRelease } from './desktop-upload-run.ts'
 import { DesktopPurgeError, purgeDesktopInstaller, resolveDesktopPurgeConfig } from './desktop-edgeone.ts'
 
-const SUPPORTED_TARGETS = new Set<DesktopPackageTargetName>(['mac-arm64', 'mac-x64', 'win-x64'])
+const SUPPORTED_TARGETS = new Set<DesktopPackageTargetName>(['mac-arm64', 'mac-x64', 'win-x64', 'linux-x64'])
 
 function targetName(value: string): DesktopPackageTargetName {
   if (!SUPPORTED_TARGETS.has(value as DesktopPackageTargetName)) {
@@ -163,7 +163,7 @@ export async function runDesktopUploadCommand(args: string[]): Promise<void> {
     const usage = error instanceof DesktopUploadUsageError
       || (error instanceof Error && 'code' in error && typeof error.code === 'string' && error.code.startsWith('ERR_PARSE_ARGS_'))
     const message = error instanceof DesktopPurgeError ? error.message
-      : usage ? `desktop upload/purge: ${error instanceof DesktopUploadUsageError ? error.message : 'invalid arguments'}. Usage: upload-target.ts <target> [--latest [--purge-only]]; targets: mac-arm64, mac-x64, win-x64.`
+      : usage ? `desktop upload/purge: ${error instanceof DesktopUploadUsageError ? error.message : 'invalid arguments'}. Usage: upload-target.ts <target> [--latest [--purge-only]]; targets: mac-arm64, mac-x64, win-x64, linux-x64.`
         : 'desktop upload: failed; inspect the printed record directory if allocated. No automatic retry; reconcile remote state before another upload.'
     // The DPAPI launcher suppresses raw stderr; these diagnostics contain no SDK details.
     const output = args.includes('--credential-launcher') ? process.stdout : process.stderr

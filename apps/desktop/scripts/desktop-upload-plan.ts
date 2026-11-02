@@ -21,6 +21,7 @@ const TARGETS = {
   'mac-arm64': { platform: 'darwin', arch: 'arm64', os: 'mac' },
   'mac-x64': { platform: 'darwin', arch: 'x64', os: 'mac' },
   'win-x64': { platform: 'win32', arch: 'x64', os: 'win' },
+  'linux-x64': { platform: 'linux', arch: 'x64', os: 'linux' },
 } as const satisfies Record<DesktopPackageTargetName, {
   readonly platform: NodeJS.Platform
   readonly arch: string
@@ -239,7 +240,7 @@ export async function createDesktopUploadPlan(
   }
 
   const base = `deepseek-harness-${buildVersion}-${target.os}-${target.arch}`
-  const updaterExtension = target.platform === 'darwin' ? 'zip' : 'exe'
+  const updaterExtension = target.platform === 'darwin' ? 'zip' : target.platform === 'linux' ? 'AppImage' : 'exe'
   const updaterInfo = updateFileInfo(metadata.files[0], `${metadataFilename}.files[0]`, `${base}.${updaterExtension}`)
   const updaterPath = await verifyChecksummedArtifact(artifactsRoot, updaterInfo)
   const artifacts: DesktopUploadArtifact[] = []
@@ -256,7 +257,7 @@ export async function createDesktopUploadPlan(
       uploadArtifact(blockmapPath, binaryPrefix, 'application/octet-stream'),
     )
   }
-  else {
+  else if (target.platform === 'win32') {
     const blockmapPath = await requireArtifact(artifactsRoot, `${base}.exe.blockmap`)
     installerArtifact = uploadArtifact(
       updaterPath,
@@ -265,6 +266,11 @@ export async function createDesktopUploadPlan(
     )
     artifacts.push(installerArtifact)
     artifacts.push(uploadArtifact(blockmapPath, binaryPrefix, 'application/octet-stream'))
+  }
+  else {
+    // AppImage updates replace the single executable in place; electron-builder emits no blockmap for it.
+    installerArtifact = uploadArtifact(updaterPath, binaryPrefix, 'application/vnd.appimage')
+    artifacts.push(installerArtifact)
   }
 
   const payloadUrl = `${update.origin}/${binaryPrefix}/${updaterInfo.filename}`

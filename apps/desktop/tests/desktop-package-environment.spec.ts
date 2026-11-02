@@ -23,6 +23,34 @@ async function withDirectory(action: (directory: string) => Promise<void>): Prom
 }
 
 describe('Desktop local packaging configuration', () => {
+  it('loads the Linux platform file and validates without signing or policy settings', async () => {
+    await withDirectory(async (directory) => {
+      await writeFile(join(directory, '.env.linux'), [
+        'DSH_DESKTOP_APP_ID=com.example.desktop',
+        'DSH_DESKTOP_AUTO_UPDATE_ENV=test',
+        'DOWNLOAD_TEST_ORIGIN=https://updates.example.com',
+        'DOWNLOAD_TEST_RELEASE_ID=0123456789abcdef0123456789abcdef',
+        'DSH_DESKTOP_LINUX_PACK_CONCURRENCY=2',
+        'DSH_DESKTOP_LINUX_COMPRESSION=normal',
+      ].join('\n'))
+      const selected = loadDesktopPackageEnvironment('linux', {}, directory)
+      expect(selected).toMatchObject({
+        DSH_DESKTOP_APP_ID: 'com.example.desktop',
+        DSH_DESKTOP_LINUX_PACK_CONCURRENCY: '2',
+        DSH_DESKTOP_LINUX_COMPRESSION: 'normal',
+      })
+      expect(selected.DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN).toBeUndefined()
+      expect(() => { validateDesktopPackageEnvironment(selected, { platform: 'linux', arch: 'x64' }) }).not.toThrow()
+    })
+  })
+
+  it('rejects other-platform settings in the Linux file', async () => {
+    await withDirectory(async (directory) => {
+      await writeFile(join(directory, '.env.linux'), 'APPLE_API_KEY=secret-sentinel\n')
+      expect(() => loadDesktopPackageEnvironment('linux', {}, directory)).toThrow(/unsupported setting/u)
+    })
+  })
+
   it('loads file-owned compression and defaults to fast Windows archive compression', async () => {
     expect(resolveWindowsPackageSettings({}).compressionLevel).toBe(3)
     await withDirectory(async (directory) => {

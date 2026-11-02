@@ -49,7 +49,7 @@ async function fixture(
   await writeFile(join(repositoryRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
   await writeFile(join(appRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
 
-  const [os, arch] = target.split('-') as ['mac' | 'win', 'arm64' | 'x64']
+  const [os, arch] = target.split('-') as ['mac' | 'win' | 'linux', 'arm64' | 'x64']
   const base = `deepseek-harness-${version}-${os}-${arch}`
   const origin = environment === 'test'
     ? TEST_ORIGIN
@@ -63,8 +63,7 @@ async function fixture(
     publicUrl: `${origin}/dsh-desk/${environment === 'test' ? `${RELEASE_ID}/` : ''}feeds/${target}/`,
   })}\n`)
 
-  if (os === 'mac') {
-    const zip = 'signed macOS ZIP fixture'
+  if (os === 'mac') {    const zip = 'signed macOS ZIP fixture'
     await writeFile(join(artifactsRoot, `${base}.zip`), zip)
     await writeFile(join(artifactsRoot, `${base}.zip.blockmap`), 'blockmap')
     await writeFile(join(artifactsRoot, `${base}.dmg`), 'notarized DMG fixture')
@@ -72,6 +71,15 @@ async function fixture(
       version,
       path: `${base}.zip`,
       files: [{ url: `${base}.zip`, size: Buffer.byteLength(zip), sha512: digest(zip) }],
+    })}\n`)
+  }
+  else if (os === 'linux') {
+    const appImage = 'AppImage fixture'
+    await writeFile(join(artifactsRoot, `${base}.AppImage`), appImage)
+    await writeFile(join(artifactsRoot, desktopUpdateMetadataFilename(version, 'linux', channel)), `${JSON.stringify({
+      version,
+      path: `${base}.AppImage`,
+      files: [{ url: `${base}.AppImage`, size: Buffer.byteLength(appImage), sha512: digest(appImage) }],
     })}\n`)
   }
   else {
@@ -220,6 +228,27 @@ describe('desktop upload plan', () => {
     ])
     expect(plan.artifacts.at(-1)).toMatchObject({
       channelMetadata: true,
+    })
+  })
+
+  it('validates Linux AppImage artifacts without a blockmap', async () => {
+    const paths = await fixture('linux-x64')
+    const plan = await createDesktopUploadPlan('linux-x64', paths)
+    expect(plan).toMatchObject({
+      environment: 'test',
+      target: 'linux-x64',
+      version: '1.2.3',
+      publicUrl: `https://desktop-updates.example.com/dsh-desk/${RELEASE_ID}/feeds/linux-x64/`,
+      bucket: TEST_BUCKET,
+    })
+    expect(plan.artifacts.map(artifact => artifact.filename)).toEqual([
+      'deepseek-harness-1.2.3-linux-x64.AppImage',
+      'nightly-linux.yml',
+    ])
+    expect(plan.artifacts[0]).toMatchObject({ contentType: 'application/vnd.appimage' })
+    expect(load(plan.artifacts.at(-1)!.contents!)).toMatchObject({
+      version: '1.2.3',
+      files: [{ sha512: digest('AppImage fixture') }],
     })
   })
 

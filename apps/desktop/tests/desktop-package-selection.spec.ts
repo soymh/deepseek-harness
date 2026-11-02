@@ -131,7 +131,7 @@ it('routes both Mac architectures to one machine without authorizing an unlisted
       .toMatchObject({ runnerName: 'mini', runnerLabel: 'dsh-mini' })
   }
   expect(() => selectDesktopPackage('owner/repo', { package_run_id: '42' }, f.routes, f.api)).toThrow(/no configured/u)
-  for (const target of [[], ['mac-x64', 'linux-x64']]) {
+  for (const target of [[], ['mac-x64', 'linux-arm64']]) {
     expect(() => selectDesktopPackage('owner/repo', { package_run_id: '42' }, { mini: { label: 'dsh-mini', target } }, f.api)).toThrow()
   }
 })
