@@ -23,4 +23,5 @@ const executable = windows ? join(application, 'DeepSeek Harness.exe')
 const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
   resolveDesktopPackageTarget(target))
 if (windows && !values.unsigned) await verifyWindowsCode(application)
-await smokePreparedRuntime(join(resources, 'app.asar', 'dsh'), executable, join(resources, 'runtime'), descriptor)
+const bundled = linux ? join(resources, 'app', 'dsh') : join(resources, 'app.asar', 'dsh')
+await smokePreparedRuntime(bundled, executable, join(resources, 'runtime'), descriptor)

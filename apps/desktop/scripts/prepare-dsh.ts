@@ -4,7 +4,7 @@ import { resolveMacOSSignatureCacheDirectory } from './macos-signature-cache-dir
 import { packagingStep } from './packaging-step.mjs'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join, relative, resolve } from 'node:path'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
@@ -116,6 +116,29 @@ function runPnpm(args: readonly string[]): Promise<void> {
   })
 }
 
+/**
+ * Keep exactly one sharp implementation in the materialized runtime.
+ * Electron on Linux leaks host glib symbols into the native libvips build, so Linux loads the WebAssembly fallback;
+ * every other target keeps its native build and drops the fallback.
+ * @param modules - Materialized production node_modules directory.
+ * @param target - Platform and architecture of the prepared payload.
+ * @returns Nothing; throws when the platform's required sharp build is absent.
+ */
+function enforceSharpRuntime(modules: string, target: { platform: NodeJS.Platform; arch: string }): void {
+  const linux = target.platform === 'linux'
+  const patterns = linux
+    ? ['**/@img/sharp-linux*', '**/@img/sharp-libvips-linux*', '**/@img/sharp-linuxmusl*', '**/@img/sharp-libvips-linuxmusl*']
+    : ['**/@img/sharp-wasm32']
+  for (const pattern of patterns) {
+    for (const path of globSync(pattern, { cwd: modules })) {
+      rmSync(join(modules, path), { recursive: true, force: true })
+    }
+  }
+  if (linux && !existsSync(join(modules, '@img', 'sharp-wasm32', 'package.json'))) {
+    throw new Error('desktop runtime: Linux requires the sharp WebAssembly build @img/sharp-wasm32')
+  }
+}
+
 async function main(): Promise<void> {
   try {
     console.log(`desktop runtime: pnpm store ${STORE_ROOT}`)
@@ -152,6 +175,7 @@ async function main(): Promise<void> {
         recursive: true, dereference: true,
         filter: source => desktopRuntimeFileExclusion(relative(modules, source), target, officeEngine) === undefined,
       })
+      enforceSharpRuntime(join(DSH_OUTPUT_ROOT, 'node_modules'), target)
     })
     writeFileSync(join(DSH_OUTPUT_ROOT, 'package.json'), `${JSON.stringify({
       name: '@deepseek-ai/dsh-desktop-runtime', private: true, version: release.version, type: 'module',

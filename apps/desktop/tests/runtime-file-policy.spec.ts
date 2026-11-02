@@ -8,6 +8,21 @@ import { runtimeFixture } from './runtime-fixture.ts'
 
 const windows = { platform: 'win32' as const, arch: 'x64' }
 
+it('keeps one sharp implementation per platform', () => {
+  const linux = { platform: 'linux' as const, arch: 'x64' }
+  const macos = { platform: 'darwin' as const, arch: 'arm64' }
+  // Electron on Linux leaks the host glib symbols into the native libvips build, so Linux runs the WASM fallback.
+  expect(desktopRuntimeFileExclusion('@img/sharp-wasm32/sharp.node', linux, 'linux-x64')).toBeUndefined()
+  expect(desktopRuntimeFileExclusion('@img/sharp-linux-x64/sharp.node', linux, 'linux-x64'))
+    .toMatch(/WebAssembly/u)
+  expect(desktopRuntimeFileExclusion('@img/sharp-libvips-linux-x64/lib/libvips-cpp.so.8.18.7', linux, 'linux-x64'))
+    .toMatch(/WebAssembly/u)
+  expect(desktopRuntimeFileExclusion('@img/colour/index.cjs', linux, 'linux-x64')).toBeUndefined()
+  expect(desktopRuntimeFileExclusion('@img/sharp-darwin-arm64/sharp.node', macos, 'darwin-arm64')).toBeUndefined()
+  expect(desktopRuntimeFileExclusion('@img/sharp-wasm32/sharp.node', macos, 'darwin-arm64'))
+    .toMatch(/another platform/u)
+})
+
 it('omits development artifacts while preserving executable modules, assets and license files', async () => {
   const root = mkdtempSync(join(tmpdir(), 'desktop-file-policy-'))
   const source = join(root, 'source')

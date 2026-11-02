@@ -44,5 +44,12 @@ export function desktopRuntimeFileExclusion(
     if (file.endsWith('.pdb')) return 'node-pty debug symbols'
   }
   if (name === '@koromix/koffi-win32-x64' && entry === 'win32_x64/koffi.lib') return 'Koffi import library'
+  if (name === '@img/sharp-wasm32') {
+    // Electron on Linux leaks the host glib symbols into the native libvips build, so Linux runs the WASM fallback.
+    return target.platform === 'linux' ? undefined : 'sharp WebAssembly fallback for another platform'
+  }
+  if (name.startsWith('@img/sharp-') && target.platform === 'linux') {
+    return 'sharp native Linux binary replaced by WebAssembly'
+  }
   return undefined
 }

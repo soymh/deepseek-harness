@@ -125,7 +125,9 @@ export function createElectronBuilderConfig(
     // Unsigned builds carry their own suffix so a shared file can never pass for a release artifact.
     artifactName: `deepseek-harness-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
     directories: { output: output.directory },
-    asar: true,
+    // Linux ships the application tree unpacked: inside an ASAR, Electron reports every probed path as present,
+    // so LibreOfficeKit cannot distinguish a missing engine from an incomplete one and never falls back to WASM.
+    asar: !packagesLinux,
     electronDist: buildPaths.electron,
     electronFuses: { runAsNode: true },
     beforeBuild: async () => {

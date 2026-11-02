@@ -17,3 +17,13 @@ it('provides private launchers only to package installation processes', () => {
     PATH: `/desktop/bin${delimiter}/user/bin`,
   })
 })
+
+it('drops a caller module path so the bundled runtime resolves only its own modules', () => {
+  const environment = { PATH: '/user/bin', NODE_PATH: '/workspace/node_modules/.pnpm/node_modules' }
+  expect(desktopNodeEnvironment('/desktop/electron', '/desktop/bin', environment)).toEqual({
+    ELECTRON_RUN_AS_NODE: '1',
+    DSH_DESKTOP_NODE_EXECUTABLE: '/desktop/electron',
+    PATH: `/desktop/bin${delimiter}/user/bin`,
+  })
+  expect(environment.NODE_PATH).toBe('/workspace/node_modules/.pnpm/node_modules')
+})
