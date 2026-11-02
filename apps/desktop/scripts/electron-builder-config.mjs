@@ -66,7 +66,12 @@ export function createElectronBuilderConfig(
   if (skipNotarization && (unsigned || resolvedPlatform !== 'darwin')) throw new Error('Skipping notarization requires a signed macOS build')
   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
   const packagesWindows = resolvedPlatform === 'win32'
-  const policy = packagesMacOS && unsigned ? undefined : resolveDesktopPolicyEnvironment(env)
+  const packagesLinux = resolvedPlatform === 'linux'
+  const policy = packagesLinux || (packagesMacOS && unsigned) ? undefined : resolveDesktopPolicyEnvironment(env)
+  const linuxCompression = env.DSH_DESKTOP_LINUX_COMPRESSION ?? 'maximum'
+  if (!['store', 'normal', 'maximum'].includes(linuxCompression)) {
+    throw new Error('desktop package: DSH_DESKTOP_LINUX_COMPRESSION must be store, normal, or maximum')
+  }
   if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
   const macOSSigning = packagesMacOS && !unsigned ? resolveMacOSSigningEnvironment(env) : undefined
   if (packagesMacOS && !unsigned && !skipNotarization) resolveMacOSNotarizationEnvironment(env)
@@ -253,9 +258,13 @@ export function createElectronBuilderConfig(
       target: ['nsis'],
     },
     linux: {
+      icon: fileURLToPath(new URL('../resources/icon.png', import.meta.url)),
       category: 'Development',
+      executableName: 'deepseek-harness',
       target: ['AppImage'],
     },
+    // Squashfs payload compression trades build time and mount cost for a smaller update download.
+    ...(packagesLinux ? { compression: linuxCompression } : {}),
     nsis: {
       uninstallDisplayName: '${productName}',
       installerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
