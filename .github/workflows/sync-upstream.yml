@@ -1,0 +1,94 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: https://github.com/deepseek-ai/deepseek-harness.git
+  TARGET_BRANCH: feat/desktop-linux-appimage
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Merge upstream into master
+        id: upstream
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream "$UPSTREAM" 2>/dev/null || git remote set-url upstream "$UPSTREAM"
+          git fetch --no-tags upstream master
+          sha=$(git rev-parse FETCH_HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "$sha" HEAD; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git merge --no-edit -m "chore: sync upstream ${sha:0:12}" "$sha"
+          git push origin master
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Prepare the Linux branch merge
+        if: steps.upstream.outputs.changed == 'true'
+        id: merge
+        run: |
+          short=$(printf '%s' "${{ steps.upstream.outputs.sha }}" | cut -c1-12)
+          branch="sync/upstream-$short"
+          git checkout -B "$branch" "origin/$TARGET_BRANCH"
+          if git merge --no-edit -m "chore: merge upstream $short" master; then
+            git push -u origin "$branch"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            echo 'clean=true' >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U > /tmp/conflicts.txt || true
+            git merge --abort || true
+            echo "conflicts=$(tr '\n' ' ' < /tmp/conflicts.txt)" >> "$GITHUB_OUTPUT"
+            echo 'clean=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge the sync pull request
+        if: steps.merge.outputs.clean == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+        run: |
+          if [ -z "$(gh pr list --head "$BRANCH" --base "$TARGET_BRANCH" --json number --jq '.[0].number // empty')" ]; then
+            gh pr create --base "$TARGET_BRANCH" --head "$BRANCH" \
+              --title "Sync upstream ${{ steps.upstream.outputs.sha }}" \
+              --body 'Automatic merge of upstream master into the Linux AppImage branch.'
+          fi
+          gh pr merge "$BRANCH" --merge --delete-branch
+
+      - name: Report a merge conflict
+        if: steps.merge.outputs.clean == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title 'Upstream sync needs manual resolution' \
+            --body "Merging master into $TARGET_BRANCH conflicts in: ${{ steps.merge.outputs.conflicts }}
+
+          Resolve the merge locally, push it, then dispatch the Linux package workflow."
+
+      - name: Build the merged branch without publishing
+        if: steps.merge.outputs.clean == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run linux-package.yml --ref "$TARGET_BRANCH" -f publish=false
