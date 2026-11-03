@@ -44,14 +44,22 @@ trap 'rm -rf "$icon_dir"' EXIT INT TERM
   "$installed" --appimage-extract 'usr/share/icons/*' >/dev/null 2>&1 || true
 )
 icon=$(find "$icon_dir/squashfs-root/usr/share/icons" -name 'deepseek-harness.png' 2>/dev/null | sort -r | head -n 1)
+icon_path=
 if [ -n "$icon" ]; then
-  size=$(basename "$(dirname "$icon")")
-  case "$size" in
-    [0-9]*x[0-9]*) ;;
-    *) size=512x512 ;;
-  esac
-  mkdir -p "${HOME}/.local/share/icons/hicolor/${size}/apps"
-  cp "$icon" "${HOME}/.local/share/icons/hicolor/${size}/apps/deepseek-harness.png"
+  # Menus look up theme icons only in the sizes a theme advertises, so install the standard ones.
+  for size in 48 128 256 512; do
+    target="${HOME}/.local/share/icons/hicolor/${size}x${size}/apps"
+    mkdir -p "$target"
+    if command -v magick >/dev/null 2>&1; then
+      magick "$icon" -resize "${size}x${size}" "$target/deepseek-harness.png"
+    elif command -v convert >/dev/null 2>&1; then
+      convert "$icon" -resize "${size}x${size}" "$target/deepseek-harness.png"
+    else
+      cp "$icon" "$target/deepseek-harness.png"
+    fi
+  done
+  # An absolute path also resolves on desktops whose user theme directory has no index.theme.
+  icon_path="${HOME}/.local/share/icons/hicolor/512x512/apps/deepseek-harness.png"
 fi
 
 cat > "${HOME}/.local/bin/deepseek-harness" <<'LAUNCHER'
@@ -71,7 +79,7 @@ Type=Application
 Name=DeepSeek Harness
 Comment=DeepSeek Harness desktop application
 Exec=${HOME}/.local/bin/deepseek-harness %U
-Icon=deepseek-harness
+Icon=${icon_path:-deepseek-harness}
 Terminal=false
 Categories=Development;
 MimeType=x-scheme-handler/dsh;
