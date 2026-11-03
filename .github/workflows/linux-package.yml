@@ -1,0 +1,88 @@
+name: Linux package
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the AppImage and update metadata as the latest GitHub release
+        type: boolean
+        default: false
+      build_version:
+        description: Version to build (blank uses apps/desktop/package.json)
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: linux-package
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.9.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Select the feed and local settings
+        run: |
+          cp apps/desktop/.env.linux.example apps/desktop/.env.linux
+          echo "DSH_DESKTOP_FEED_URL=https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/" >> apps/desktop/.env.linux
+
+      - name: Build the AppImage
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          BUILD_VERSION: ${{ inputs.build_version }}
+        run: |
+          if [ -n "${BUILD_VERSION}" ]; then
+            pnpm --filter @deepseek-ai/dsh-desktop run package:linux:x64 -- --build-version "${BUILD_VERSION}"
+          else
+            pnpm --filter @deepseek-ai/dsh-desktop run package:linux:x64
+          fi
+
+      - name: Read the packaged version
+        id: artifact
+        run: |
+          appimage=$(ls apps/desktop/.desktop-build/targets/linux-x64/artifacts/*.AppImage)
+          version=$(node -p "require('./apps/desktop/.desktop-build/targets/linux-x64/artifacts/linux-x64-release.json').version")
+          echo "appimage=${appimage}" >> "$GITHUB_OUTPUT"
+          echo "metadata=apps/desktop/.desktop-build/targets/linux-x64/artifacts/nightly-linux.yml" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-${{ steps.artifact.outputs.version }}
+          path: |
+            apps/desktop/.desktop-build/targets/linux-x64/artifacts/*.AppImage
+            apps/desktop/.desktop-build/targets/linux-x64/artifacts/nightly-linux.yml
+          compression-level: 0
+          retention-days: 14
+
+      - name: Publish the latest release
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPIMAGE: ${{ steps.artifact.outputs.appimage }}
+          METADATA: ${{ steps.artifact.outputs.metadata }}
+          VERSION: ${{ steps.artifact.outputs.version }}
+        run: |
+          gh release create "linux-v${VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "DeepSeek Harness Desktop ${VERSION} (Linux x64)" \
+            --notes "Self-updating Linux AppImage built from ${GITHUB_SHA}." \
+            --latest \
+            "${APPIMAGE}" "${METADATA}"
