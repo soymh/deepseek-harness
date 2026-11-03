@@ -24,13 +24,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.28.5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24.9.0
           cache: pnpm
@@ -48,11 +48,8 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           BUILD_VERSION: ${{ inputs.build_version }}
         run: |
-          if [ -n "${BUILD_VERSION}" ]; then
-            pnpm --filter @deepseek-ai/dsh-desktop run package:linux:x64 -- --build-version "${BUILD_VERSION}"
-          else
-            pnpm --filter @deepseek-ai/dsh-desktop run package:linux:x64
-          fi
+          version=${BUILD_VERSION:-auto}
+          pnpm --filter @deepseek-ai/dsh-desktop run package:linux:x64 -- --build-version "$version"
 
       - name: Read the packaged version
         id: artifact
@@ -63,7 +60,7 @@ jobs:
           echo "metadata=apps/desktop/.desktop-build/targets/linux-x64/artifacts/nightly-linux.yml" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-appimage-${{ steps.artifact.outputs.version }}
           path: |
