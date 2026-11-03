@@ -77,9 +77,15 @@ jobs:
           METADATA: ${{ steps.artifact.outputs.metadata }}
           VERSION: ${{ steps.artifact.outputs.version }}
         run: |
-          gh release create "linux-v${VERSION}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "DeepSeek Harness Desktop ${VERSION} (Linux x64)" \
-            --notes "Self-updating Linux AppImage built from ${GITHUB_SHA}." \
-            --latest \
-            "${APPIMAGE}" "${METADATA}"
+          tag="linux-v${VERSION}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "${APPIMAGE}" "${METADATA}"
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "DeepSeek Harness Desktop ${VERSION} (Linux x64)" \
+              --notes "Self-updating Linux AppImage built from ${GITHUB_SHA}." \
+              --latest \
+              "${APPIMAGE}" "${METADATA}"
+          fi
