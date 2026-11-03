@@ -148,6 +148,30 @@ function httpsOrigin(value, name) {
 }
 
 /**
+ * Normalize an HTTPS feed base URL that already hosts the channel metadata and artifacts.
+ * @param {string} value - Candidate feed URL.
+ * @returns {URL} URL whose authoritative path ends with a separator.
+ */
+function httpsFeedUrl(value) {
+  let parsed
+  try {
+    parsed = new URL(value)
+  }
+  catch {
+    throw new Error('desktop auto-update: DSH_DESKTOP_FEED_URL must be an absolute HTTPS URL')
+  }
+  if (parsed.protocol !== 'https:'
+    || parsed.username !== ''
+    || parsed.password !== ''
+    || parsed.search !== ''
+    || parsed.hash !== ''
+    || !parsed.pathname.endsWith('/')) {
+    throw new Error('desktop auto-update: DSH_DESKTOP_FEED_URL must be an HTTPS directory URL ending with "/", without credentials, query, or fragment')
+  }
+  return parsed
+}
+
+/**
  * Resolve the public updater URL and object prefixes for one release target.
  * @param {NodeJS.ProcessEnv} env - Packaging or upload environment.
  * @param {NodeJS.Platform} platform - Target Node.js platform.
@@ -159,6 +183,20 @@ export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
   const channel = resolveDesktopUpdateChannel(env)
   const environment = resolveDesktopAutoUpdateEnvironment(env)
   const target = resolveDesktopAutoUpdateTarget(platform, arch)
+  const custom = env.DSH_DESKTOP_FEED_URL?.trim()
+  if (custom !== undefined && custom !== '') {
+    // A caller-owned feed publishes its channel metadata beside the artifacts it already hosts.
+    const feed = httpsFeedUrl(custom)
+    return {
+      environment,
+      channel,
+      target,
+      origin: feed.origin,
+      keyPrefix: '',
+      binaryKeyPrefix: '',
+      publicUrl: feed.href,
+    }
+  }
   const deployment = UPDATE_ENVIRONMENTS[environment]
   let origin = deployment.fixedOrigin
   if (origin === undefined) {
@@ -195,6 +233,9 @@ export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
  * @throws {Error} When the selected deployment lacks a bucket or valid updater configuration.
  */
 export function resolveDesktopUploadConfig(env, platform, arch) {
+  if (env.DSH_DESKTOP_FEED_URL?.trim()) {
+    throw new Error('desktop upload: DSH_DESKTOP_FEED_URL names a caller-owned feed; publish those artifacts with its own tooling')
+  }
   const update = resolveDesktopAutoUpdateConfig(env, platform, arch)
   const deployment = UPDATE_ENVIRONMENTS[update.environment]
   return {

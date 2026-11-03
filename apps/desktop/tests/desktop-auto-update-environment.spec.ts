@@ -114,8 +114,26 @@ describe('desktop auto-update environment', () => {
     expect(desktopBuildRecordFilename('linux-x64')).toBe('linux-x64-release.json')
   })
 
-  it('names the fixed installer for every supported target', () => {
-    expect(desktopLatestInstallerFilename('mac-arm64')).toBe('dsh-latest-macos-arm64.dmg')
+  it('uses a caller-owned HTTPS feed instead of the deployment layout', () => {
+    const feed = 'https://github.com/soymh/deepseek-harness/releases/latest/download/'
+    expect(resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_FEED_URL: feed }, 'linux', 'x64')).toEqual({
+      environment: 'test',
+      channel: 'nightly',
+      target: 'linux-x64',
+      origin: 'https://github.com',
+      keyPrefix: '',
+      binaryKeyPrefix: '',
+      publicUrl: feed,
+    })
+    expect(() => resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_FEED_URL: 'http://example.com/feed/' }, 'linux', 'x64'))
+      .toThrow(/HTTPS directory URL/u)
+    expect(() => resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_FEED_URL: 'https://example.com/feed' }, 'linux', 'x64'))
+      .toThrow(/ending with/u)
+    expect(() => resolveDesktopUploadConfig({ DSH_DESKTOP_FEED_URL: feed }, 'linux', 'x64'))
+      .toThrow(/caller-owned feed/u)
+  })
+
+  it('names the fixed installer for every supported target', () => {    expect(desktopLatestInstallerFilename('mac-arm64')).toBe('dsh-latest-macos-arm64.dmg')
     expect(desktopLatestInstallerFilename('mac-x64')).toBe('dsh-latest-macos-x64.dmg')
     expect(desktopLatestInstallerFilename('win-x64')).toBe('dsh-latest-windows-x64.exe')
     expect(desktopLatestInstallerFilename('linux-x64')).toBe('dsh-latest-linux-x64.AppImage')
