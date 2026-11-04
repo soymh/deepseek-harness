@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
-  issues: write
   actions: write
 
 concurrency:
@@ -25,11 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: master
+          ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
 
-      - name: Merge upstream into master
-        id: upstream
+      - name: Merge upstream into the Linux branch
+        id: merge
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -39,53 +37,28 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           if git merge-base --is-ancestor "$sha" HEAD; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'Already contains upstream.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          git merge --no-edit -m "chore: sync upstream ${sha:0:12}" "$sha"
-          git push origin master
           echo 'changed=true' >> "$GITHUB_OUTPUT"
-
-      - name: Prepare the Linux branch merge
-        if: steps.upstream.outputs.changed == 'true'
-        id: merge
-        run: |
-          short=$(printf '%s' "${{ steps.upstream.outputs.sha }}" | cut -c1-12)
-          branch="sync/upstream-$short"
-          git checkout -B "$branch" "origin/$TARGET_BRANCH"
-          if git merge --no-edit -m "chore: merge upstream $short" master; then
-            git push -u origin "$branch"
-            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          if git merge --no-edit -m "chore: sync upstream ${sha:0:12}" "$sha"; then
+            git push origin "HEAD:$TARGET_BRANCH"
             echo 'clean=true' >> "$GITHUB_OUTPUT"
+            echo "Merged upstream $sha." >> "$GITHUB_STEP_SUMMARY"
           else
-            git diff --name-only --diff-filter=U > /tmp/conflicts.txt || true
-            git merge --abort || true
-            echo "conflicts=$(tr '\n' ' ' < /tmp/conflicts.txt)" >> "$GITHUB_OUTPUT"
-            echo 'clean=false' >> "$GITHUB_OUTPUT"
+            git diff --name-only --diff-filter=U > /tmp/conflicts.txt
+            git merge --abort
+            {
+              echo '### Upstream sync needs manual resolution'
+              echo
+              echo "Merging upstream \`$sha\` into \`$TARGET_BRANCH\` conflicts in:"
+              echo
+              sed 's/^/- `/; s/$/`/' /tmp/conflicts.txt
+              echo
+              echo 'Resolve locally, push the branch, then dispatch the Linux package workflow.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
-
-      - name: Merge the sync pull request
-        if: steps.merge.outputs.clean == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ steps.merge.outputs.branch }}
-        run: |
-          if [ -z "$(gh pr list --head "$BRANCH" --base "$TARGET_BRANCH" --json number --jq '.[0].number // empty')" ]; then
-            gh pr create --base "$TARGET_BRANCH" --head "$BRANCH" \
-              --title "Sync upstream ${{ steps.upstream.outputs.sha }}" \
-              --body 'Automatic merge of upstream master into the Linux AppImage branch.'
-          fi
-          gh pr merge "$BRANCH" --merge --delete-branch
-
-      - name: Report a merge conflict
-        if: steps.merge.outputs.clean == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh issue create \
-            --title 'Upstream sync needs manual resolution' \
-            --body "Merging master into $TARGET_BRANCH conflicts in: ${{ steps.merge.outputs.conflicts }}
-
-          Resolve the merge locally, push it, then dispatch the Linux package workflow."
 
       - name: Build the merged branch without publishing
         if: steps.merge.outputs.clean == 'true'
