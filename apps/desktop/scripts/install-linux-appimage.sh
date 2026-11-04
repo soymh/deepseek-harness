@@ -2,6 +2,7 @@
 # Install a DeepSeek Harness Linux AppImage for the current user.
 #
 # Usage: install-linux-appimage.sh <path-to-AppImage> [--dir <applications-directory>]
+# The default directory is ~/.local/bin, which is normally already on PATH.
 #
 # The image keeps its versioned filename: the updater replaces and renames the file it is running,
 # so the launcher resolves the newest image in the directory instead of a fixed path.
@@ -17,7 +18,7 @@ image=${1:-}
 shift
 [ -f "$image" ] || fail "$image is not a file"
 
-applications=${HOME}/Applications
+applications=${DEEPSEEK_HARNESS_DIR:-${HOME}/.local/bin}
 if [ "${1:-}" = "--dir" ]; then
   [ -n "${2:-}" ] || fail "--dir requires a directory"
   applications=$2
@@ -62,16 +63,19 @@ if [ -n "$icon" ]; then
   icon_path="${HOME}/.local/share/icons/hicolor/512x512/apps/deepseek-harness.png"
 fi
 
-cat > "${HOME}/.local/bin/deepseek-harness" <<'LAUNCHER'
+cat > "$applications/deepseek-harness" <<'LAUNCHER'
 #!/bin/sh
-# Launch the newest DeepSeek Harness AppImage; updates replace the versioned file in the same directory.
+# Launch the newest DeepSeek Harness AppImage beside this launcher; updates replace the versioned file in place.
 set -eu
-root=${DEEPSEEK_HARNESS_DIR:-$HOME/Applications}
+root=${DEEPSEEK_HARNESS_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)}
 image=$(ls -t "$root"/deepseek-harness-*.AppImage 2>/dev/null | head -n 1)
 [ -n "$image" ] || { echo "deepseek-harness: no AppImage found in $root" >&2; exit 1; }
 exec "$image" --no-sandbox "$@"
 LAUNCHER
-chmod 755 "${HOME}/.local/bin/deepseek-harness"
+chmod 755 "$applications/deepseek-harness"
+if [ "$applications" != "${HOME}/.local/bin" ]; then
+  ln -sf "$applications/deepseek-harness" "${HOME}/.local/bin/deepseek-harness"
+fi
 
 cat > "${HOME}/.local/share/applications/deepseek-harness.desktop" <<DESKTOP
 [Desktop Entry]
